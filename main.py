@@ -2,8 +2,9 @@ import json
 import pandas as pd
 from extract import *
 from transform import *
+from load import load_to_database, verify_data
 
-PAGES_A_EXTRAIRE = 3
+PAGES_A_EXTRAIRE = 1
 FICHIER_GENERIQUES = "extract_generiques.json"
 FICHIER_CSV_FINAL = "medicaments_output.csv"
 
@@ -39,3 +40,12 @@ df_final = pd.DataFrame(final_data) # storing database as a csv => cross platefo
 df_final.to_csv(FICHIER_CSV_FINAL, index=False, encoding="utf-8-sig")
 print(f"✅ DataFrame save as '{FICHIER_CSV_FINAL}'")
 print("✅ Transforming done !")
+#---------------------------------------------------------------------------------------
+# LOAD
+#---------------------------------------------------------------------------------------
+print("*-* Loading...")
+df = pd.read_csv(FICHIER_CSV_FINAL)
+load_to_database(df)
+verify_data()
+print("✅ Loading done !")
+
