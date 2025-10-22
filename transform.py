@@ -65,10 +65,17 @@ def cis_data_transformed(cis_data, generique_dic):
 
     return presentations_list 
 
-def medicine_to_json(medicine_list, output_file="extract_medicine.json"):
+def transform_data(cis_raw_list, generique_dic):
     """
-    Sauvegarde directement la liste "plate" de présentations dans un fichier JSON.
+    Étape T : Transforme les données brutes en une liste plate finale.
     """
-    with open(output_file, "w+") as f:
-        json.dump(medicine_list, f, indent=4)
-    return True
+    # 1. Transformer les données (crée une liste de listes)
+    # ex: [ [{'cis':1, 'cip':'A'}], [], [{'cis':2, 'cip':'C'}] ]
+    cis_transformed_nested = [cis_data_transformed(raw, generique_dic) for raw in cis_raw_list]
+    # 2. Aplatir la liste (version "list comprehension")
+    cis_transformed_flat = [
+        presentation 
+        for sublist in cis_transformed_nested 
+        for presentation in sublist
+    ]    
+    return cis_transformed_flat
