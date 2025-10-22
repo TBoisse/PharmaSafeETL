@@ -1,99 +1,106 @@
-# Fichier: main.py (Version propre et structurée)
-
 import json
 import pandas as pd
 import sys
 from extract import *
 from transform import *
 
-def run_etl_pipeline(pages_to_extract, generiques_file, output_csv_file):
+def extract_data(pages_to_extract, generiques_file):
     """
-    Exécute le pipeline ETL complet :
-    1. Extrait les groupes génériques.
-    2. Crée un fichier de correspondance.
-    3. Extrait les spécialités (CIS) à partir de la liste.
-    4. Transforme et aplatit les données (CIS-CIP).
-    5. Sauvegarde le résultat dans un DataFrame et un fichier CSV.
+    Étape E : Extrait toutes les données brutes nécessaires.
+    - Groupes génériques (API)
+    - Fichier de correspondance (Disque)
+    - Spécialités (API)
+    Retourne les données brutes prêtes pour la transformation.
     """
     
-    # Génériques
     print(f"Extraction des groupes génériques ({pages_to_extract} premières pages)...")
     gen_list_raw = extract_generiques(pages_to_extract)
     if not gen_list_raw:
         print("Erreur: Aucune donnée de générique n'a été extraite. Arrêt.")
-        return False
+        return None, None
 
     generiques_to_json(gen_list_raw, generiques_file)
     print(f"Fichier de correspondance '{generiques_file}' créé.")
 
-    # Lecture de la correspondance
     try:
         with open(generiques_file, "r") as f:
-            gen_dic = json.load(f) 
+            gen_dic = json.load(f) # Dictionnaire {"1": [cis1, cis2], ...}
     except FileNotFoundError:
-        print(f"Erreur critique: '{generiques_file}' non trouvé. Arrêt.")
-        return False
+        print(f"Erreur: '{generiques_file}' non trouvé. Arrêt.")
+        return None, None
         
     cis_list = get_list_cis(generiques_file)
     if not cis_list:
         print("Aucun CIS trouvé dans le fichier de correspondance. Arrêt.")
-        return False
+        return None, None
 
     print(f"Extraction des données pour {len(cis_list)} CIS...")
-
-    # Spécialités
     cis_raw = [extract_from_cis(cis) for cis in cis_list]
     print("Extraction des spécialités terminée.")
+    
+    return cis_raw, gen_dic
 
-    # Aplatissement
-    cis_transformed_nested = [cis_data_transformed(raw, gen_dic) for raw in cis_raw]
-
-    # Aplatissement en une liste simple de dictionnaires
+def transform_data(cis_raw_list, generique_dic):
+    """
+    Étape T : Transforme les données brutes en une liste plate finale.
+    """
+    
+    # 1. Transformer les données (crée une liste de listes)
+    # ex: [ [{'cis':1, 'cip':'A'}], [], [{'cis':2, 'cip':'C'}] ]
+    cis_transformed_nested = [cis_data_transformed(raw, generique_dic) for raw in cis_raw_list]
+    
+    # 2. Aplatir la liste (version "list comprehension")
     cis_transformed_flat = [
         presentation 
         for sublist in cis_transformed_nested 
         for presentation in sublist
     ]
+    
+    print(f"Transformation terminée. {len(cis_transformed_flat)} présentations trouvées.")
+    
+    return cis_transformed_flat
 
-    if not cis_transformed_flat:
-        print("\nAucune donnée n'a été transformée. Le fichier final sera vide.")
-        return True # Ce n'est pas une erreur, juste pas de données
+def load_data_to_csv(data_list, output_csv_file):
+    """
+    Étape L : Charge la liste finale dans un DataFrame et le sauvegarde en CSV.
+    """
+    if not data_list:
+        print("\nAucune donnée n'a été transformée, le fichier CSV ne sera pas créé.")
+        return False
 
-    print(f"Transformation terminée. {len(cis_transformed_flat)} présentations (couples CIS-CIP) trouvées.")
-
-    # Load to DataFrame & CSV
     try:
-        df_final = pd.DataFrame(cis_transformed_flat)
+        df_final = pd.DataFrame(data_list)
         
         print("\n--- DataFrame final (5 premières lignes) ---")
         print(df_final.head())
         
-        # Sauvegarde du DataFrame en fichier CSV
         df_final.to_csv(output_csv_file, index=False, encoding="utf-8-sig")
         print(f"\nDataFrame sauvegardé avec succès dans '{output_csv_file}'")
-        return True # Succès
-        
+        return True
+    
     except Exception as e:
-        print(f"\nErreur lors de la sauvegarde du CSV : {e}")
-        return False # Échec
+        print(f"\nErreur lors de la création du DataFrame ou du CSV : {e}")
+        return False
 
 
 if __name__ == "__main__":
     
+    
     PAGES_A_EXTRAIRE = 3
     FICHIER_GENERIQUES = "extract_generiques.json"
     FICHIER_CSV_FINAL = "medicaments_output.csv"
+
+    raw_data, lookup_dic = extract_data(PAGES_A_EXTRAIRE, FICHIER_GENERIQUES)
     
-    print("--- Démarrage du pipeline ETL ---")
-  
-    success = run_etl_pipeline(
-        pages_to_extract=PAGES_A_EXTRAIRE,
-        generiques_file=FICHIER_GENERIQUES,
-        output_csv_file=FICHIER_CSV_FINAL
-    )
-    
-    if success:
-        print("--- Pipeline ETL terminé avec succès. ---")
+    if raw_data is not None:
+        final_data = transform_data(raw_data, lookup_dic)
+        
+        success = load_data_to_csv(final_data, FICHIER_CSV_FINAL)
+        
+        if success:
+            print("--- Pipeline ETL terminé avec succès. ---")
+        else:
+            print("--- Pipeline ETL terminé (mais le CSV est vide ou a échoué). ---")
     else:
-        print("--- Pipeline ETL terminé avec des erreurs. ---")
+        print("--- Pipeline ETL terminé avec des erreurs (Étape d'extraction). ---")
         sys.exit(1)
